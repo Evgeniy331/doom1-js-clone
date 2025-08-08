@@ -32,13 +32,17 @@ const VFOV = HFOV * (SCREEN_HEIGHT / SCREEN_WIDTH);
 // and has an eye height (z) between the floor and ceiling of the
 // current sector.
 const player = {
-  x: 5.0,           // world X coordinate
-  y: 2.5,           // world Y coordinate
-  z: 1.0,           // eye height above the floor
-  angle: 0.0,       // viewing angle in radians
-  sector: 0,        // index of the sector the player is in
-  speed: 3.0,       // movement speed units per second
-  rotSpeed: Math.PI // rotation speed (radians per second)
+  // Start the player a bit further down the corridor so that
+  // multiple sectors are visible immediately.  This makes it
+  // easier to verify that portal traversal is working.  The
+  // coordinates place the player in sector 1 looking east.
+  x: 12.0,
+  y: 2.5,
+  z: 1.0,
+  angle: 0.0,
+  sector: 1,
+  speed: 3.0,
+  rotSpeed: Math.PI
 };
 
 // Data structures for the sector based world.  Each sector is
@@ -58,38 +62,53 @@ class Sector {
   }
 }
 
-// Define a very small world composed of a handful of sectors.  This is
-// not a full reproduction of E1M1 but demonstrates the portal system.
-// Later commits can expand on this map to match the first level more
-// closely.
+// Define the world composed of multiple sectors.  Each sector
+// approximates part of the first level layout.  The player starts in
+// sector 0 and can travel through corridors into larger rooms.  More
+// sectors can be appended later to match E1M1 more closely.
 const sectors = [
-  // Sector 0: starting room.  A rectangular room with a door on
+  // Sector 0: starting room.  A rectangular room with a portal on
   // the east wall leading to sector 1.  Floor at 0 and ceiling at 3.
   new Sector(
     0, 3,
     [ { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 5 }, { x: 0, y: 5 } ],
-    [ -1,    /* north wall */
-      1,     /* east wall goes to sector 1 */
-      -1,    /* south wall */
-      -1     /* west wall */
-    ],
-    '#6c6' // greenish walls
+    [ -1, 1, -1, -1 ],
+    '#6c6'
   ),
-  // Sector 1: corridor leading to a larger room.  Has two portals:
-  // the west wall leads back to sector 0, and the east wall leads to
-  // sector 2.  Floor and ceiling heights match sector 0.
+  // Sector 1: narrow corridor connecting the start room to the first
+  // large room.  West leads back to sector 0, east leads to sector 2.
   new Sector(
     0, 3,
     [ { x: 10, y: 1 }, { x: 14, y: 1 }, { x: 14, y: 4 }, { x: 10, y: 4 } ],
     [ -1, 2, -1, 0 ],
-    '#66c' // bluish walls
+    '#66c'
   ),
-  // Sector 2: a larger room.  Floor at 0 and a taller ceiling.
+  // Sector 2: mid‑size room.  West wall connects to the corridor
+  // (sector 1) and east wall connects to sector 3.  Taller ceiling
+  // gives a sense of space.
   new Sector(
     0, 4,
     [ { x: 14, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 6 }, { x: 14, y: 6 } ],
-    [ -1, -1, -1, 1 ],
-    '#c66' // reddish walls
+    [ -1, 3, -1, 1 ],
+    '#c66'
+  ),
+  // Sector 3: corridor extending east from sector 2 to sector 4.  This
+  // corridor sits slightly higher (floor 0) with the same ceiling
+  // height as sector 2.  West leads to sector 2, east to sector 4.
+  new Sector(
+    0, 4,
+    [ { x: 20, y: 2 }, { x: 24, y: 2 }, { x: 24, y: 5 }, { x: 20, y: 5 } ],
+    [ -1, 4, -1, 2 ],
+    '#6ac'
+  ),
+  // Sector 4: a larger hall at the end of the corridor.  West wall
+  // connects back to sector 3.  This room has a high ceiling for
+  // variety.
+  new Sector(
+    0, 5,
+    [ { x: 24, y: 0 }, { x: 30, y: 0 }, { x: 30, y: 8 }, { x: 24, y: 8 } ],
+    [ -1, -1, -1, 3 ],
+    '#c9c'
   )
 ];
 
@@ -381,6 +400,22 @@ function render() {
       if (neighbour >= 0 && xEnd >= xStart) {
         queue.push({ sectorId: neighbour, xl: xStart, xr: xEnd });
       }
+    }
+  }
+  // After drawing all sector walls, fill in the ceiling and floor.  The
+  // yTop and yBottom arrays now encode the highest and lowest pixel
+  // drawn in each column.  Everything above yTop is ceiling (sky) and
+  // below yBottom is floor.
+  for (let x = 0; x < SCREEN_WIDTH; x++) {
+    // Ceiling
+    if (yTop[x] > 0) {
+      ctx.fillStyle = '#222';
+      ctx.fillRect(x, 0, 1, yTop[x]);
+    }
+    // Floor
+    if (yBottom[x] < SCREEN_HEIGHT - 1) {
+      ctx.fillStyle = '#444';
+      ctx.fillRect(x, yBottom[x] + 1, 1, SCREEN_HEIGHT - 1 - yBottom[x]);
     }
   }
 }
