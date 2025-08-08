@@ -301,6 +301,35 @@ function update(delta) {
   if (shotCooldown > 0) {
     shotCooldown = Math.max(0, shotCooldown - dt);
   }
+
+  // Simple enemy AI: alive enemies will slowly move towards the player
+  // if the player is within a certain range.  Enemies perform a
+  // rudimentary collision test against walls and doors.  There is no
+  // pathfinding, so enemies may get stuck on corners.
+  const enemySpeed = 1.5; // units per second
+  for (const enemy of enemies) {
+    if (!enemy.alive) continue;
+    const dxEnemy = player.x - enemy.x;
+    const dyEnemy = player.y - enemy.y;
+    const distance = Math.hypot(dxEnemy, dyEnemy);
+    // Only move if the player is within 6 map units
+    if (distance > 0.2 && distance < 6.0) {
+      const step = enemySpeed * dt;
+      const moveX = (dxEnemy / distance) * step;
+      const moveY = (dyEnemy / distance) * step;
+      // Check collision with walls horizontally
+      const newEx = enemy.x + moveX;
+      const newEy = enemy.y + moveY;
+      // Horizontal axis
+      if (worldMap[Math.floor(enemy.y)][Math.floor(newEx)] === 0) {
+        enemy.x = newEx;
+      }
+      // Vertical axis
+      if (worldMap[Math.floor(newEy)][Math.floor(enemy.x)] === 0) {
+        enemy.y = newEy;
+      }
+    }
+  }
 }
 
 /**
