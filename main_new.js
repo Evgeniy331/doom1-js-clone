@@ -12,6 +12,7 @@ const ctx = canvas.getContext('2d');
 
 // Game state
 let lastTimestamp = 0;
+let shotCooldown = 0; // cooldown timer between shots (seconds)
 
 // Define the player state.  The player starts roughly in the middle
 // of the map and faces east (0 radians).
@@ -92,6 +93,14 @@ window.addEventListener('keyup', (e) => {
   if (e.key in keysPressed) {
     keysPressed[e.key] = false;
     e.preventDefault();
+  }
+});
+
+// Mouse input: shoot when the left mouse button is pressed.
+window.addEventListener('mousedown', (e) => {
+  // Only handle left button
+  if (e.button === 0) {
+    shoot();
   }
 });
 
@@ -274,6 +283,11 @@ function update(delta) {
   if (worldMap[Math.floor(newY)][Math.floor(player.x)] === 0) {
     player.y = newY;
   }
+
+  // Reduce shot cooldown over time
+  if (shotCooldown > 0) {
+    shotCooldown = Math.max(0, shotCooldown - dt);
+  }
 }
 
 /**
@@ -332,6 +346,9 @@ function render() {
   ctx.font = '14px monospace';
   ctx.fillText(`Position: (${player.x.toFixed(2)}, ${player.y.toFixed(2)})`, 10, 20);
   ctx.fillText(`Angle: ${(player.angle * 180 / Math.PI).toFixed(0)}\u00b0`, 10, 36);
+
+  // Draw the player's weapon as a simple overlay at the bottom of the screen.
+  drawWeapon();
 }
 
 /**
@@ -370,6 +387,65 @@ function drawEnemies() {
     const spriteY = canvas.height / 2 - size / 2;
     ctx.fillStyle = 'red';
     ctx.fillRect(spriteX, spriteY, size, size);
+  }
+}
+
+/**
+ * Draw a simple weapon overlay at the bottom of the screen.  When the player
+ * shoots, a brief muzzle flash is displayed.  Future commits can replace
+ * these rectangles with actual weapon sprites and animations.
+ */
+function drawWeapon() {
+  const weaponWidth = canvas.width * 0.4;
+  const weaponHeight = canvas.height * 0.25;
+  const x = (canvas.width - weaponWidth) / 2;
+  const y = canvas.height - weaponHeight;
+  // Weapon body
+  ctx.fillStyle = '#666';
+  ctx.fillRect(x, y, weaponWidth, weaponHeight);
+  // Muzzle flash when recently fired (0.4s window after shooting)
+  if (shotCooldown > 0.4) {
+    const flashWidth = weaponWidth * 0.3;
+    const flashHeight = weaponHeight * 0.4;
+    ctx.fillStyle = '#ffa500';
+    ctx.fillRect((canvas.width - flashWidth) / 2, y - flashHeight, flashWidth, flashHeight);
+  }
+}
+
+/**
+ * Attempt to shoot the closest enemy directly in front of the player.  If
+ * the shot cooldown has expired, this function scans for enemies close to
+ * the center of the screen (small angular threshold) and not occluded by walls.
+ * The closest such enemy is marked as dead.
+ */
+function shoot() {
+  // Prevent shooting if still in cooldown
+  if (shotCooldown > 0) {
+    return;
+  }
+  shotCooldown = 0.5; // half a second cooldown
+  let closestEnemy = null;
+  let closestDist = Infinity;
+  for (const enemy of enemies) {
+    if (!enemy.alive) continue;
+    const dx = enemy.x - player.x;
+    const dy = enemy.y - player.y;
+    const distance = Math.hypot(dx, dy);
+    let angleToEnemy = Math.atan2(dy, dx) - player.angle;
+    // Normalize angle difference
+    while (angleToEnemy < -Math.PI) angleToEnemy += Math.PI * 2;
+    while (angleToEnemy > Math.PI) angleToEnemy -= Math.PI * 2;
+    // Only consider enemies within a narrow cone (~5 degrees) in front of the player
+    if (Math.abs(angleToEnemy) > Math.PI / 36) continue;
+    // Check if a wall is closer than the enemy along the player's line of sight
+    const { distance: wallDist } = castRay(player.angle);
+    if (distance < wallDist + 0.3 && distance < closestDist) {
+      closestDist = distance;
+      closestEnemy = enemy;
+    }
+  }
+  if (closestEnemy) {
+    closestEnemy.alive = false;
   }
 }
 
