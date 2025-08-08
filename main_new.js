@@ -50,6 +50,15 @@ const MAP_WIDTH = worldMap[0].length;
 const MAP_HEIGHT = worldMap.length;
 const FOV = Math.PI / 3; // 60 degrees field of view
 
+// List of enemies (sprites) in the level.  Each enemy has a position (x,y)
+// in map coordinates and an alive flag.  Enemies will be rendered as sprites
+// and can be killed by the player in later commits.
+const enemies = [
+  { x: 5.5, y: 5.5, alive: true },
+  { x: 8.5, y: 8.5, alive: true },
+  { x: 4.5, y: 7.5, alive: true },
+];
+
 // Track which keys are currently pressed.  We use a simple object
 // with boolean flags to indicate key state.  Keys will be mapped
 // to movement and rotation in the update() function.
@@ -314,11 +323,54 @@ function render() {
     ctx.fillRect(x, drawStart, 1, drawEnd - drawStart + 1);
   }
 
+  // After drawing walls, draw enemy sprites.  Sprites are sorted back‑to‑front
+  // so that closer enemies are drawn last and appear in front of farther ones.
+  drawEnemies();
+
   // Draw player debug info overlay on top
   ctx.fillStyle = '#fff';
   ctx.font = '14px monospace';
   ctx.fillText(`Position: (${player.x.toFixed(2)}, ${player.y.toFixed(2)})`, 10, 20);
   ctx.fillText(`Angle: ${(player.angle * 180 / Math.PI).toFixed(0)}\u00b0`, 10, 36);
+}
+
+/**
+ * Draw all enemies that are within the player's field of view and not
+ * occluded by walls.  The enemies array is sorted by distance so that
+ * farther sprites are drawn first.  For simplicity enemies are rendered
+ * as red squares.  In later commits, this function can be extended to
+ * use sprite images and animations.
+ */
+function drawEnemies() {
+  const visible = [];
+  for (const enemy of enemies) {
+    if (!enemy.alive) continue;
+    const dx = enemy.x - player.x;
+    const dy = enemy.y - player.y;
+    const distance = Math.hypot(dx, dy);
+    // Angle from player to enemy relative to player view direction
+    let angleToEnemy = Math.atan2(dy, dx) - player.angle;
+    // Normalize angle difference to [-π, π]
+    while (angleToEnemy < -Math.PI) angleToEnemy += Math.PI * 2;
+    while (angleToEnemy > Math.PI) angleToEnemy -= Math.PI * 2;
+    // Skip if outside the field of view
+    if (Math.abs(angleToEnemy) > FOV / 2) continue;
+    // Check line of sight: if a wall is closer than the enemy, skip drawing
+    const { distance: wallDist } = castRay(player.angle + angleToEnemy);
+    if (wallDist < distance - 0.2) continue;
+    visible.push({ enemy, distance, angleToEnemy });
+  }
+  // Sort from farthest to nearest
+  visible.sort((a, b) => b.distance - a.distance);
+  for (const { enemy, distance, angleToEnemy } of visible) {
+    // Project enemy onto screen
+    const size = Math.min(canvas.height / distance, canvas.height * 0.8);
+    const screenX = (0.5 + angleToEnemy / FOV) * canvas.width;
+    const spriteX = screenX - size / 2;
+    const spriteY = canvas.height / 2 - size / 2;
+    ctx.fillStyle = 'red';
+    ctx.fillRect(spriteX, spriteY, size, size);
+  }
 }
 
 // Start the game loop once the page has loaded
