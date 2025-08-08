@@ -32,15 +32,13 @@ const VFOV = HFOV * (SCREEN_HEIGHT / SCREEN_WIDTH);
 // and has an eye height (z) between the floor and ceiling of the
 // current sector.
 const player = {
-  // Start the player a bit further down the corridor so that
-  // multiple sectors are visible immediately.  This makes it
-  // easier to verify that portal traversal is working.  The
-  // coordinates place the player in sector 1 looking east.
-  x: 12.0,
-  y: 2.5,
+  // Start the player inside the mid‑size room (sector 2) facing east.
+  // This allows you to immediately see enemies and multiple sectors.
+  x: 15.0,
+  y: 3.0,
   z: 1.0,
   angle: 0.0,
-  sector: 1,
+  sector: 2,
   speed: 3.0,
   rotSpeed: Math.PI
 };
@@ -110,6 +108,16 @@ const sectors = [
     [ -1, -1, -1, 3 ],
     '#c9c'
   )
+];
+
+// Enemies (sprites) placed in the world.  Each enemy has a position
+// in world coordinates and an alive flag.  Later commits may add
+// simple AI and interactions.  Their sizes are assumed to be 1 unit
+// tall and 0.5 units wide for projection.
+const enemies = [
+  { x: 16, y: 3, alive: true }, // in sector 2
+  { x: 26, y: 4, alive: true }, // in sector 4
+  { x: 8,  y: 2, alive: true }  // back in sector 0 for testing
 ];
 
 // Key state tracking for movement and rotation
@@ -218,6 +226,45 @@ function updatePlayer(dt) {
     player.x = newX;
     player.y = newY;
     player.sector = newSector;
+  }
+}
+
+// Handle mouse input for shooting.  When the left mouse button is
+// pressed, attempt to kill the closest enemy in front of the player
+// within a narrow field of view.  There is no cooldown timer in this
+// simple example, so shots can be fired rapidly.
+window.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return; // only left mouse
+  shoot();
+});
+
+/**
+ * Shoot the nearest visible enemy in front of the player.  We search
+ * all alive enemies and pick the one with the smallest angle
+ * difference to the player's current direction and within a limited
+ * field of view (e.g. ±10°).  Distance is also taken into account
+ * so that closer enemies are prioritised.
+ */
+function shoot() {
+  let best = null;
+  const maxAngle = Math.PI / 18; // ±10°
+  for (const enemy of enemies) {
+    if (!enemy.alive) continue;
+    const dx = enemy.x - player.x;
+    const dy = enemy.y - player.y;
+    const ang = Math.atan2(dy, dx);
+    let diff = ang - player.angle;
+    // Normalize to [-π, π]
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    if (Math.abs(diff) > maxAngle) continue;
+    const dist = Math.hypot(dx, dy);
+    if (!best || dist < best.dist) {
+      best = { enemy, dist };
+    }
+  }
+  if (best) {
+    best.enemy.alive = false;
   }
 }
 
@@ -416,6 +463,52 @@ function render() {
     if (yBottom[x] < SCREEN_HEIGHT - 1) {
       ctx.fillStyle = '#444';
       ctx.fillRect(x, yBottom[x] + 1, 1, SCREEN_HEIGHT - 1 - yBottom[x]);
+    }
+  }
+
+  // Draw sprites (enemies).  Project each sprite into screen space
+  // and draw as a coloured rectangle.  We sort sprites by distance
+  // so that nearer sprites are drawn last, over those behind them.
+  const spr = [];
+  const sinA = Math.sin(-player.angle);
+  const cosA = Math.cos(-player.angle);
+  for (const enemy of enemies) {
+    if (!enemy.alive) continue;
+    // Position relative to player
+    const ex = enemy.x - player.x;
+    const ey = enemy.y - player.y;
+    // Rotate into camera space
+    const sx = ex * cosA - ey * sinA;
+    const sz = ex * sinA + ey * cosA;
+    if (sz <= 0.1) continue; // behind player or too close
+    // Screen position
+    const projX = SCREEN_WIDTH / 2 - (sx * (SCREEN_WIDTH / 2)) / (sz * Math.tan(HFOV / 2));
+    // Sprite height and width scaling.  We assume a sprite of 1.0 units tall.
+    const spriteHeightWorld = 1.0;
+    const top = (spriteHeightWorld - player.z) / sz;
+    const bottom = (0 - player.z) / sz;
+    let syTop = SCREEN_HEIGHT / 2 - top * (SCREEN_HEIGHT / 2) / Math.tan(VFOV / 2);
+    let syBottom = SCREEN_HEIGHT / 2 - bottom * (SCREEN_HEIGHT / 2) / Math.tan(VFOV / 2);
+    const h = syBottom - syTop;
+    const w = h; // simple square sprite
+    spr.push({ dist: sz, x: projX, yTop: syTop, yBottom: syBottom, h: h, w: w });
+  }
+  // Sort far to near so that nearer sprites draw last
+  spr.sort((a, b) => b.dist - a.dist);
+  for (const s of spr) {
+    const xStart = Math.floor(s.x - s.w / 2);
+    const xEnd = Math.floor(s.x + s.w / 2);
+    for (let x = xStart; x <= xEnd; x++) {
+      if (x < 0 || x >= SCREEN_WIDTH) continue;
+      // Skip if sprite is behind current wall clipping
+      let y1 = Math.floor(s.yTop);
+      let y2 = Math.floor(s.yBottom);
+      if (y1 < yTop[x]) y1 = yTop[x];
+      if (y2 > yBottom[x]) y2 = yBottom[x];
+      if (y2 >= y1) {
+        ctx.fillStyle = '#f00';
+        ctx.fillRect(x, y1, 1, y2 - y1 + 1);
+      }
     }
   }
 }
