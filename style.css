@@ -1,0 +1,22 @@
+/* Basic styles for the Doom clone page */
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: Arial, sans-serif;
+  background-color: #111;
+  color: #eee;
+  text-align: center;
+}
+
+h1 {
+  margin-top: 1rem;
+  font-size: 1.5rem;
+}
+
+#gameCanvas {
+  display: block;
+  margin: 1rem auto;
+  border: 1px solid #555;
+  background-color: #000;
+}
